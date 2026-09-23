@@ -4,12 +4,18 @@ package tag
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/magefile/mage/mg"
 	"github.com/magefile/mage/sh"
 )
+
+// branchTagRe matches any run of characters that are not safe in a git/docker
+// tag. Branch names containing a "/" (e.g. "feat/foo") would otherwise produce
+// a tag with a slash, which auto-release systems and Docker image tags reject.
+var branchTagRe = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
 
 // Info provides an information object defining the current build
 // environment, either using the current repo (preferred) or
@@ -136,9 +142,18 @@ func generateVersion() string {
 	if err != nil {
 		branch = mainBranch
 	}
-	tn := time.Now().UTC()
-	v := tn.Format(timeStampFormat)
-	if branch == mainBranch {
+	return versionForBranch(branch, time.Now().UTC().Format(timeStampFormat))
+}
+
+// versionForBranch builds a tag-safe version string from a branch name and a
+// pre-formatted timestamp. The branch is sanitised so names containing a "/"
+// (or any other character invalid in a git/docker tag) still yield a valid tag.
+func versionForBranch(branch, v string) string {
+	if branch == "" || branch == mainBranch {
+		return v
+	}
+	branch = strings.Trim(branchTagRe.ReplaceAllString(branch, "-"), "-")
+	if branch == "" {
 		return v
 	}
 	return branch + "-" + v
